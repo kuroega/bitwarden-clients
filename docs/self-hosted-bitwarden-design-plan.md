@@ -23,6 +23,7 @@ The deployment serves one account for the owner's personal use across these devi
 | Remote access | Decided | Private HTTPS through Tailscale; access restricted to the owner's authorized devices |
 | Two-step login | Requested capability | Support Google Authenticator using TOTP; enable it on each account |
 | Server implementation | Recommended default | Official Bitwarden Lite |
+| Bitwarden subscription tier | Decided | Free individual; no Premium license required for the selected features |
 | Deployment | Recommended default | Docker Compose on an always-on Linux host |
 | Database | Recommended default | SQLite for the single personal account |
 | HTTPS proxy | Decided | Tailscale Serve with trusted HTTPS; Caddy is not required for this endpoint |
@@ -67,6 +68,7 @@ Use one stable Tailscale HTTPS address across all clients, such as `https://vaul
 - Use SQLite initially to avoid operating a separate database service for a small number of users.
 - Mount `/etc/bitwarden` persistently and identify any additional configured attachment or data paths before implementing backups.
 - Obtain the installation ID and key required by the official deployment.
+- Use the Free individual tier. Google Authenticator two-step login is included. File attachments, integrated website TOTP generation, paid vault health reports, and other Premium features are outside the initial scope. The installation ID and key are still required independently of subscription tier.
 - Keep deployment configuration in a separate server deployment directory or repository. This clients repository contains client applications, not the backend implementation.
 - Treat PostgreSQL as an option if future usage or operational requirements justify it.
 
@@ -151,28 +153,30 @@ The macOS app can also be built from this repository if customization is later r
 - **#3 — Remote access — closed:** Private HTTPS through Tailscale Serve. Install Tailscale on the Ubuntu VM and each client; keep the vault restricted to authorized devices. The owner does not regularly use another VPN on iPhone.
 - **#5 — Email and offsite backups — closed at the design level:** Use the personal @outlook.com account for login and receiving notifications, a dedicated transactional SMTP service for outbound email, and the existing Google Drive subscription for encrypted, dated rclone backups. Selecting and verifying the SMTP vendor remains an implementation task; no vendor has been selected yet.
 - **#6 — Recovery and retention — closed:** Accept up to 24 hours of data loss and restoration within 24 hours, assuming hardware and backup access are available. Back up nightly and before upgrades; retain 7 daily, 4 weekly, and 6 monthly recovery points. Test restoration before production and every 3 months; alert on backup failures.
+- **#7 — Paid features and licensing — closed:** Use Bitwarden Free individual. The selected password-management and Google Authenticator login features do not require Premium. Revisit licensing only if paid features are requested later.
 
 ## Open questions
 
 Question numbers are retained from the original plan.
 
 - **#4:** Select the Tailscale machine name and resulting HTTPS hostname during setup. A custom domain, public home IP, and dynamic DNS are no longer prerequisites; ISP reachability is relevant only if connectivity troubleshooting is needed.
-- **#7:** Are any paid Bitwarden features needed? Confirm their self-hosted licensing requirements before deployment.
 
 ## Implementation sequence
 
-1. Select the Tailscale hostname and SMTP vendor, confirm sender requirements, and resolve licensing choices.
+1. Select the Tailscale hostname and SMTP vendor and confirm sender requirements.
 2. Upgrade VMware to a suitable maintained release, allocate VM resources, install Ubuntu Server with OpenSSH, and prepare Docker Compose.
 3. Create deployment configuration with pinned images and persistent storage.
 4. Install Tailscale on the VM and clients, configure private HTTPS through Serve and access rules, then configure SMTP and optional push relay connectivity.
 5. Create accounts and enroll Google Authenticator two-step login.
-6. Configure all clients and test login, vault edits, attachments if used, and synchronization.
+6. Configure all clients and test two-step login, vault edits, and synchronization.
 7. Implement encrypted offsite backups and complete a restore test.
 8. Record maintenance and recovery procedures before storing production credentials.
 
 ## References
 
 - [Official Bitwarden Lite deployment](https://bitwarden.com/help/install-and-deploy-lite/)
+- [Bitwarden plan comparison](https://bitwarden.com/help/password-manager-plans/)
+- [Self-hosted Premium licensing, if needed later](https://bitwarden.com/help/licensing-on-premise/)
 - [Configure clients for a self-hosted server](https://bitwarden.com/help/change-client-environment/)
 - [Authenticator two-step login](https://bitwarden.com/help/setup-two-step-login-authenticator/)
 - [Two-step login recovery code](https://bitwarden.com/help/two-step-recovery-code/)
