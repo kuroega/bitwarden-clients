@@ -27,6 +27,7 @@ The deployment serves one account for the owner's personal use across these devi
 | Deployment | Recommended default | Docker Compose on an always-on Linux host |
 | Database | Recommended default | SQLite for the single personal account |
 | HTTPS proxy | Decided | Tailscale Serve with trusted HTTPS; Caddy is not required for this endpoint |
+| Server naming | Decided | Ubuntu and Tailscale machine name: vault; retain Tailscale's generated tailnet name |
 | Client distribution | Recommended default | Standard Bitwarden apps configured with the self-hosted URL |
 | Account email and notification inbox | Decided | Personal @outlook.com account |
 | Outbound email delivery | Decided architecture; vendor selection deferred | Dedicated transactional SMTP service delivering to the Outlook inbox |
@@ -49,7 +50,7 @@ flowchart TD
     Storage --> Backup["Encrypted offsite backups"]
 ```
 
-Use one stable Tailscale HTTPS address across all clients, such as `https://vault.<tailnet-name>.ts.net`. This is an illustrative hostname; the actual machine and tailnet names will be selected during setup. A custom domain and a public home IP are not required for the selected access method.
+Use `vault` as both the Ubuntu hostname and Tailscale machine name. Keep Tailscale's generated tailnet name and configure every Bitwarden client with the full HTTPS address, `https://vault.<tailnet-name>.ts.net`. The suffix is a placeholder until the actual generated name is recorded during setup. Keep these names stable after client configuration. A custom domain, dynamic DNS, and a public home IP are not required for the selected access method.
 
 ### Home host
 
@@ -151,22 +152,21 @@ The macOS app can also be built from this repository if customization is later r
 - **#1 — Host and operating system — closed:** Use the existing Windows 11 home PC with VMware Workstation and an Ubuntu Server 24.04 LTS x86_64 guest, terminal-only with no desktop GUI. VMware is currently version 15.5.7; upgrading it and allocating VM resources remain implementation tasks.
 - **#2 — Usage scope and account count — closed:** One account, exclusively for the owner's personal use across Windows, macOS, and iOS devices.
 - **#3 — Remote access — closed:** Private HTTPS through Tailscale Serve. Install Tailscale on the Ubuntu VM and each client; keep the vault restricted to authorized devices. The owner does not regularly use another VPN on iPhone.
+- **#4 — Hostname and domain — closed:** Name the Ubuntu VM and Tailscale machine `vault`, retain Tailscale's generated tailnet name, and use the full `https://vault.<tailnet-name>.ts.net` address across all clients. Record the actual suffix during implementation; no custom domain or dynamic DNS is needed.
 - **#5 — Email and offsite backups — closed at the design level:** Use the personal @outlook.com account for login and receiving notifications, a dedicated transactional SMTP service for outbound email, and the existing Google Drive subscription for encrypted, dated rclone backups. Selecting and verifying the SMTP vendor remains an implementation task; no vendor has been selected yet.
 - **#6 — Recovery and retention — closed:** Accept up to 24 hours of data loss and restoration within 24 hours, assuming hardware and backup access are available. Back up nightly and before upgrades; retain 7 daily, 4 weekly, and 6 monthly recovery points. Test restoration before production and every 3 months; alert on backup failures.
 - **#7 — Paid features and licensing — closed:** Use Bitwarden Free individual. The selected password-management and Google Authenticator login features do not require Premium. Revisit licensing only if paid features are requested later.
 
 ## Open questions
 
-Question numbers are retained from the original plan.
-
-- **#4:** Select the Tailscale machine name and resulting HTTPS hostname during setup. A custom domain, public home IP, and dynamic DNS are no longer prerequisites; ISP reachability is relevant only if connectivity troubleshooting is needed.
+All seven original questions are resolved at the design level. Implementation still requires selecting the SMTP vendor, allocating VM resources, and recording the generated Tailscale hostname. Recommended defaults remain identified separately in the decision table.
 
 ## Implementation sequence
 
-1. Select the Tailscale hostname and SMTP vendor and confirm sender requirements.
+1. Select the SMTP vendor and confirm sender requirements.
 2. Upgrade VMware to a suitable maintained release, allocate VM resources, install Ubuntu Server with OpenSSH, and prepare Docker Compose.
 3. Create deployment configuration with pinned images and persistent storage.
-4. Install Tailscale on the VM and clients, configure private HTTPS through Serve and access rules, then configure SMTP and optional push relay connectivity.
+4. Install Tailscale on the VM and clients, set the machine name to `vault`, record the generated full hostname, enable MagicDNS and HTTPS, and configure Serve and access rules. Then configure SMTP and optional push relay connectivity.
 5. Create accounts and enroll Google Authenticator two-step login.
 6. Configure all clients and test two-step login, vault edits, and synchronization.
 7. Implement encrypted offsite backups and complete a restore test.
