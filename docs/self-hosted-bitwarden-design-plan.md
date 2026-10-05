@@ -8,6 +8,8 @@ Status: Planning; deployment has not started.
 
 Run a Bitwarden-compatible password vault on home infrastructure, accessible from Windows, macOS, and iOS devices, with two-step login using Google Authenticator.
 
+The deployment serves one account for the owner's personal use across these devices.
+
 ## Decisions and proposed defaults
 
 | Item | Status | Direction |
@@ -17,30 +19,32 @@ Run a Bitwarden-compatible password vault on home infrastructure, accessible fro
 | Linux guest | Decided | Ubuntu Server 24.04 LTS x86_64, terminal-only; no desktop GUI |
 | Client platforms | Decided | Windows, macOS, and iOS |
 | Backend ownership | Decided | Self-hosted server |
+| Usage scope | Decided | Personal use only; one account |
+| Remote access | Decided | Private HTTPS through Tailscale; access restricted to the owner's authorized devices |
 | Two-step login | Requested capability | Support Google Authenticator using TOTP; enable it on each account |
 | Server implementation | Recommended default | Official Bitwarden Lite |
 | Deployment | Recommended default | Docker Compose on an always-on Linux host |
-| Database | Recommended default | SQLite for personal or family use |
-| HTTPS proxy | Recommended default | Caddy with a certificate trusted by all devices |
+| Database | Recommended default | SQLite for the single personal account |
+| HTTPS proxy | Decided | Tailscale Serve with trusted HTTPS; Caddy is not required for this endpoint |
 | Client distribution | Recommended default | Standard Bitwarden apps configured with the self-hosted URL |
 | Backups | Recommended default | Daily encrypted offsite backups and backups before upgrades |
 
-Home hosting is confirmed. The recommended defaults above are a proposed baseline, rather than separately confirmed choices. This plan assumes personal or family use; business use would require revisiting the deployment variant.
+Home hosting, single-account personal use, and private HTTPS through Tailscale are confirmed. The recommended defaults above are a proposed baseline, rather than separately confirmed choices. Business use would require revisiting the deployment variant.
 
 ## Proposed architecture
 
 ```mermaid
 flowchart TD
     Clients["Windows / macOS / iOS / browser extensions"]
-    Clients -->|"HTTPS over public internet or private VPN"| Proxy["Caddy reverse proxy"]
-    Proxy --> Server["Bitwarden Lite"]
+    Clients -->|"HTTPS over private Tailscale network"| Proxy["Tailscale Serve in Ubuntu VM"]
+    Proxy -->|"Loopback-only upstream"| Server["Bitwarden Lite"]
     Server --> Storage["Persistent volume: SQLite, attachments, configuration"]
     Server --> SMTP["External SMTP service"]
     Server --> Push["Bitwarden push relay, if enabled"]
     Storage --> Backup["Encrypted offsite backups"]
 ```
 
-Use one stable server address, such as `https://vault.example.com`, across all clients. The actual domain and access method remain open.
+Use one stable Tailscale HTTPS address across all clients, such as `https://vault.<tailnet-name>.ts.net`. This is an illustrative hostname; the actual machine and tailnet names will be selected during setup. A custom domain and a public home IP are not required for the selected access method.
 
 ### Home host
 
@@ -64,14 +68,17 @@ Use one stable server address, such as `https://vault.example.com`, across all c
 
 ### HTTPS and remote access
 
-Two alternatives remain under consideration:
+Private HTTPS through Tailscale Serve is selected for this single-user deployment.
 
-| Access method | Benefits | Requirements and tradeoffs |
-| --- | --- | --- |
-| Public HTTPS | Clients connect directly from home Wi-Fi or cellular networks | Trusted TLS certificate, stable DNS, firewall configuration, and an internet-reachable endpoint; check ISP CGNAT and dynamic addressing |
-| VPN-only | Vault endpoint is reachable only through the private network | Every remote device needs VPN access; trusted HTTPS and hostname resolution are still required |
+- Install Tailscale in the Ubuntu guest and on Windows, macOS, and iOS.
+- Enable the required Tailscale DNS and HTTPS settings and configure Serve to proxy to Bitwarden's local upstream.
+- Publish the container upstream only on Ubuntu loopback, for example `127.0.0.1:<port>`, and keep the database private.
+- Restrict tailnet access to the owner's authorized devices. Retain Bitwarden two-step login independently of network access.
+- Keep the vault endpoint private; do not enable Tailscale Funnel or forward the vault's ports on the home router.
+- Use private Tailscale connectivity for SSH administration as well.
+- Test notification connections and login/sync from all clients over the selected HTTPS endpoint.
 
-Expose only the intended proxy endpoint. Keep the application port and database private. Configure proxy support for the server's notification connections.
+Tailscale introduces an external coordination dependency. The owner does not regularly use another VPN on iPhone. Configure and test on-demand connectivity on both Wi-Fi and cellular; another active VPN can conflict with Tailscale on iOS. Keep Tailscale account recovery available outside the vault and plan server device-key expiry so it does not unexpectedly interrupt access.
 
 Use Bitwarden's own authentication. An additional interactive proxy login page can prevent native clients from connecting.
 
@@ -130,24 +137,24 @@ The macOS app can also be built from this repository if customization is later r
 ## Resolved questions
 
 1. **Host and operating system — closed:** Use the existing Windows 11 home PC with VMware Workstation and an Ubuntu Server 24.04 LTS x86_64 guest, terminal-only with no desktop GUI. VMware is currently version 15.5.7; upgrading it and allocating VM resources remain implementation tasks.
+2. **Usage scope and account count — closed:** One account, exclusively for the owner's personal use across Windows, macOS, and iOS devices.
+3. **Remote access — closed:** Private HTTPS through Tailscale Serve. Install Tailscale on the Ubuntu VM and each client; keep the vault restricted to authorized devices. The owner does not regularly use another VPN on iPhone.
 
 ## Open questions
 
 Question numbers are retained from the original plan.
 
-2. Is this exclusively personal/family use, and how many accounts are expected?
-3. Should remote clients connect directly over public HTTPS or use a VPN?
-4. Is a domain already available? Does the home ISP provide a public address, or use CGNAT?
+4. Select the Tailscale machine name and resulting HTTPS hostname during setup. A custom domain, public home IP, and dynamic DNS are no longer prerequisites; ISP reachability is relevant only if connectivity troubleshooting is needed.
 5. Which SMTP provider and offsite backup destination will be used?
 6. Are the proposed recovery objectives and backup retention acceptable?
 7. Are any paid Bitwarden features needed? Confirm their self-hosted licensing requirements before deployment.
 
 ## Implementation sequence
 
-1. Resolve usage scope, network access, and domain choices.
+1. Select the Tailscale hostname and resolve SMTP, backup, recovery, and licensing choices.
 2. Upgrade VMware to a suitable maintained release, allocate VM resources, install Ubuntu Server with OpenSSH, and prepare Docker Compose.
 3. Create deployment configuration with pinned images and persistent storage.
-4. Configure HTTPS, SMTP, and optional push relay connectivity.
+4. Install Tailscale on the VM and clients, configure private HTTPS through Serve and access rules, then configure SMTP and optional push relay connectivity.
 5. Create accounts and enroll Google Authenticator two-step login.
 6. Configure all clients and test login, vault edits, attachments if used, and synchronization.
 7. Implement encrypted offsite backups and complete a restore test.
@@ -166,5 +173,10 @@ Question numbers are retained from the original plan.
 - [Alpine release and package support policy](https://alpinelinux.org/releases/)
 - [Docker on Alpine](https://wiki.alpinelinux.org/wiki/Docker)
 - [VMware Workstation host support matrix](https://knowledge.broadcom.com/external/article?legacyId=80807)
+- [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve)
+- [Tailscale firewall and NAT traversal](https://tailscale.com/kb/1181/firewalls)
+- [Tailscale VPN On Demand for iOS and macOS](https://tailscale.com/docs/features/client/ios-vpn-on-demand)
+- [Tailscale compatibility with other VPNs](https://tailscale.com/docs/reference/faq/other-vpns)
+- [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https)
 
 Vaultwarden was considered as an unofficial compatible alternative. Official Bitwarden Lite remains the recommended baseline for this plan.
