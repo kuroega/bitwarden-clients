@@ -27,7 +27,11 @@ The deployment serves one account for the owner's personal use across these devi
 | Database | Recommended default | SQLite for the single personal account |
 | HTTPS proxy | Decided | Tailscale Serve with trusted HTTPS; Caddy is not required for this endpoint |
 | Client distribution | Recommended default | Standard Bitwarden apps configured with the self-hosted URL |
-| Backups | Recommended default | Daily encrypted offsite backups and backups before upgrades |
+| Account email and notification inbox | Decided | Personal @outlook.com account |
+| Outbound email delivery | Decided architecture; vendor selection deferred | Dedicated transactional SMTP service delivering to the Outlook inbox |
+| Backup destination and method | Decided | Existing Google Drive subscription; locally encrypted, dated backups uploaded with rclone |
+| Backup schedule and retention | Decided | Nightly and before upgrades; 7 daily, 4 weekly, and 6 monthly recovery points |
+| Recovery targets and testing | Decided | At most 24 hours of data loss; restore within 24 hours with hardware and backup access available; test before production and every 3 months |
 
 Home hosting, single-account personal use, and private HTTPS through Tailscale are confirmed. The recommended defaults above are a proposed baseline, rather than separately confirmed choices. Business use would require revisiting the deployment variant.
 
@@ -103,21 +107,27 @@ Keep the authenticator available independently of the vault it protects. Store r
 
 ## Email and mobile synchronization
 
-- Configure an external SMTP service for account verification, invitations, and notifications as needed.
+- Use the owner's personal @outlook.com address for the Bitwarden account and notification destination.
+- Send account verification and security notifications through a dedicated transactional SMTP service. Select the vendor during implementation and confirm its approval, sender verification, authentication, and sending limits before deployment.
+- Configure a sender identity authorized by that service; the recipient's Outlook address does not have to be the sender. Confirm whether the selected vendor requires a custom sending domain, since the private Tailscale endpoint does not provide one.
+- Store SMTP credentials outside version control. Test delivery to the Outlook inbox, including spam-folder checks.
+- Outlook SMTP authentication and an OAuth bridge are not part of the selected design. Google Authenticator codes remain independent of email delivery.
 - Retain Bitwarden push relay support if automatic mobile synchronization is desired. This introduces an outbound dependency on Bitwarden's relay service.
 - Disabling push relay leaves manual synchronization available but affects automatic mobile behavior.
 - Validate synchronization between desktop and iOS clients after deployment.
 
 ## Backups and recovery
 
-Proposed recovery objectives are a maximum of 24 hours of data loss and restoration within one day, assuming replacement hardware and backup access are available. Confirm these targets before deployment.
+Accepted recovery objectives are a maximum of 24 hours of data loss and restoration within 24 hours, assuming replacement hardware and backup access are available. Validate the restoration target with a restore test before production use. The data-loss target depends on successful nightly backup uploads.
 
 - Back up the database, attachments, configuration, and required server keys together.
 - For SQLite, use a database-aware backup or briefly stop the application before copying persistent data. Avoid relying on an ordinary copy of an actively changing database.
-- Encrypt backups and send a copy to storage outside the home host.
-- Proposed retention: 7 daily, 4 weekly, and 6 monthly recovery points.
+- Create consistent, dated backups locally, encrypt them before upload, and use rclone to copy them to a dedicated folder in the existing Google Drive subscription. Use rclone crypt for client-side encryption, including filenames, with recovery configuration stored securely outside the vault.
+- Preserve multiple recovery points rather than mirroring the live database. The backup folder is separate from application storage; Google Drive is not the live database filesystem.
+- Run backups every night and retain 7 daily, 4 weekly, and 6 monthly recovery points.
+- Alert when a backup or upload fails. Take an additional backup after important password changes or a large import.
 - Keep backup decryption credentials accessible independently of Bitwarden.
-- Test restoration on a separate host before relying on the server, and repeat periodically.
+- Test restoration on a separate host or isolated VM before production use and every 3 months. Verify download, decryption, database and attachment restoration, client login, and synchronization.
 - Take a backup before every application upgrade. Database migrations may require restoring that backup to roll back safely.
 
 ## Operations
@@ -136,22 +146,22 @@ The macOS app can also be built from this repository if customization is later r
 
 ## Resolved questions
 
-1. **Host and operating system — closed:** Use the existing Windows 11 home PC with VMware Workstation and an Ubuntu Server 24.04 LTS x86_64 guest, terminal-only with no desktop GUI. VMware is currently version 15.5.7; upgrading it and allocating VM resources remain implementation tasks.
-2. **Usage scope and account count — closed:** One account, exclusively for the owner's personal use across Windows, macOS, and iOS devices.
-3. **Remote access — closed:** Private HTTPS through Tailscale Serve. Install Tailscale on the Ubuntu VM and each client; keep the vault restricted to authorized devices. The owner does not regularly use another VPN on iPhone.
+- **#1 — Host and operating system — closed:** Use the existing Windows 11 home PC with VMware Workstation and an Ubuntu Server 24.04 LTS x86_64 guest, terminal-only with no desktop GUI. VMware is currently version 15.5.7; upgrading it and allocating VM resources remain implementation tasks.
+- **#2 — Usage scope and account count — closed:** One account, exclusively for the owner's personal use across Windows, macOS, and iOS devices.
+- **#3 — Remote access — closed:** Private HTTPS through Tailscale Serve. Install Tailscale on the Ubuntu VM and each client; keep the vault restricted to authorized devices. The owner does not regularly use another VPN on iPhone.
+- **#5 — Email and offsite backups — closed at the design level:** Use the personal @outlook.com account for login and receiving notifications, a dedicated transactional SMTP service for outbound email, and the existing Google Drive subscription for encrypted, dated rclone backups. Selecting and verifying the SMTP vendor remains an implementation task; no vendor has been selected yet.
+- **#6 — Recovery and retention — closed:** Accept up to 24 hours of data loss and restoration within 24 hours, assuming hardware and backup access are available. Back up nightly and before upgrades; retain 7 daily, 4 weekly, and 6 monthly recovery points. Test restoration before production and every 3 months; alert on backup failures.
 
 ## Open questions
 
 Question numbers are retained from the original plan.
 
-4. Select the Tailscale machine name and resulting HTTPS hostname during setup. A custom domain, public home IP, and dynamic DNS are no longer prerequisites; ISP reachability is relevant only if connectivity troubleshooting is needed.
-5. Which SMTP provider and offsite backup destination will be used?
-6. Are the proposed recovery objectives and backup retention acceptable?
-7. Are any paid Bitwarden features needed? Confirm their self-hosted licensing requirements before deployment.
+- **#4:** Select the Tailscale machine name and resulting HTTPS hostname during setup. A custom domain, public home IP, and dynamic DNS are no longer prerequisites; ISP reachability is relevant only if connectivity troubleshooting is needed.
+- **#7:** Are any paid Bitwarden features needed? Confirm their self-hosted licensing requirements before deployment.
 
 ## Implementation sequence
 
-1. Select the Tailscale hostname and resolve SMTP, backup, recovery, and licensing choices.
+1. Select the Tailscale hostname and SMTP vendor, confirm sender requirements, and resolve licensing choices.
 2. Upgrade VMware to a suitable maintained release, allocate VM resources, install Ubuntu Server with OpenSSH, and prepare Docker Compose.
 3. Create deployment configuration with pinned images and persistent storage.
 4. Install Tailscale on the VM and clients, configure private HTTPS through Serve and access rules, then configure SMTP and optional push relay connectivity.
@@ -178,5 +188,9 @@ Question numbers are retained from the original plan.
 - [Tailscale VPN On Demand for iOS and macOS](https://tailscale.com/docs/features/client/ios-vpn-on-demand)
 - [Tailscale compatibility with other VPNs](https://tailscale.com/docs/reference/faq/other-vpns)
 - [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https)
+- [Outlook.com SMTP authentication and settings](https://support.microsoft.com/en-us/outlook/pop-imap-and-smtp-settings-for-outlook-com)
+- [Bitwarden SMTP configuration](https://bitwarden.com/help/smtp-configurations/)
+- [rclone Google Drive backend](https://rclone.org/drive/)
+- [rclone client-side encryption](https://rclone.org/crypt/)
 
 Vaultwarden was considered as an unofficial compatible alternative. Official Bitwarden Lite remains the recommended baseline for this plan.
