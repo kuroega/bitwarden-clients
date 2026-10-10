@@ -1,0 +1,38 @@
+#include <windows.h>
+1 RT_MANIFEST "src/app.manifest"
+101 ICON "assets/vault-backup-heian.ico"
+102 DIALOGEX 0, 0, 420, 132
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Backup record"
+FONT 9, "Microsoft YaHei UI"
+BEGIN
+ LTEXT "Path", 401, 8, 11, 44, 12
+ EDITTEXT 402, 56, 8, 302, 16, ES_AUTOHSCROLL | ES_READONLY
+ PUSHBUTTON "Copy", 403, 364, 8, 48, 16
+ LTEXT "SHA256", 404, 8, 35, 44, 12
+ EDITTEXT 405, 56, 32, 356, 16, ES_AUTOHSCROLL | ES_READONLY
+ LTEXT "Details", 406, 8, 59, 44, 12
+ EDITTEXT 407, 56, 56, 356, 44, ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
+ DEFPUSHBUTTON "OK", IDOK, 364, 108, 48, 16
+END
+1 VERSIONINFO
+ FILEVERSION 1,1,0,0
+ PRODUCTVERSION 1,1,0,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904B0"
+  BEGIN
+   VALUE "FileDescription", "Bitwarden Vault Backup & Recover\0"
+   VALUE "ProductName", "Bitwarden Vault Backup & Recover\0"
+   VALUE "FileVersion", "1.1.0\0"
+   VALUE "ProductVersion", "1.1.0\0"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0409, 1200
+ END
+END

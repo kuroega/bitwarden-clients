@@ -1,0 +1,6 @@
+/bin/
+/server.local.ini
+
+# Private deployment validation and machine performance records
+/TEST_RESULTS.md
+/PERFORMANCE.md
