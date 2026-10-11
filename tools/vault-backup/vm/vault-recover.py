@@ -134,12 +134,14 @@ def restore(deployment, image, folder):
     report(70)
     old = json.loads(run(['docker', 'ps', '-a', '--filter', 'name=^/bitwarden$', '--format', 'json'], 30) or b'null')
     running = paused = False
+    old_restart = 'no'
     if old:
         info = json.loads(run(['docker', 'inspect', 'bitwarden'], 30))[0]
         if not any(m['Source'] == str(BASE / 'data') and m['Destination'] == '/etc/bitwarden' for m in info['Mounts']):
             raise RuntimeError('Unexpected existing container mount')
         running = info['State']['Running']
         paused = info['State']['Paused']
+        old_restart = info['HostConfig']['RestartPolicy']['Name']
     for path in (BASE, ROOT):
         if path.is_symlink():
             raise RuntimeError('Unexpected deployment symlink')
@@ -150,15 +152,21 @@ def restore(deployment, image, folder):
     def status(phase):
         temp = journal.with_suffix('.partial')
         temp.write_text(json.dumps({'phase': phase, 'previous': str(previous),
-                                    'old_container': old_name, 'was_running': running, 'was_paused': paused}))
+                                    'old_container': old_name, 'was_running': running, 'was_paused': paused,
+                                    'old_restart_policy': old_restart}))
         os.replace(temp, journal)
         with open(journal, 'rb') as file:
             os.fsync(file.fileno())
     status('prepared')
     moved_container = moved_data = new_data = new_container = False
+    policy_changed = False
     try:
         report(75)
         if old:
+            # A retained rollback container must never start alongside the vault
+            # after a daemon restart. Restore its policy if the transaction fails.
+            policy_changed = True
+            run(['docker', 'update', '--restart', 'no', 'bitwarden'], 30)
             if paused:
                 run(['docker', 'unpause', 'bitwarden'], 30)
             if running:
@@ -172,6 +180,17 @@ def restore(deployment, image, folder):
         status('old-data-retained')
         deployment.rename(BASE)
         new_data = True
+        # Regenerate fixed deployment settings instead of reusing an older
+        # archive's restart policy or trusting arbitrary Compose directives.
+        (BASE / 'compose.yaml').write_text(
+            'name: bitwarden\nservices:\n  bitwarden:\n'
+            f'    image: {image}\n'
+            '    container_name: bitwarden\n    env_file:\n      - settings.env\n'
+            '    restart: always\n    mem_limit: 1536m\n    ports:\n'
+            '      - "127.0.0.1:8080:8080"\n    volumes:\n'
+            '      - ./data:/etc/bitwarden\n    logging:\n      driver: json-file\n'
+            '      options:\n        max-size: "10m"\n        max-file: "3"\n',
+            encoding='utf-8')
         os.chmod(BASE, 0o700)
         for name in ('settings.env', 'compose.yaml'):
             os.chmod(BASE / name, 0o600)
@@ -182,7 +201,7 @@ def restore(deployment, image, folder):
         status('data-installed')
         report(85)
         new_container = True  # Creation can succeed even when its response times out.
-        run(['docker', 'create', '--name', 'bitwarden', '--restart', 'no',
+        run(['docker', 'create', '--name', 'bitwarden', '--restart', 'always',
              '--label', 'com.docker.compose.project=bitwarden',
              '--label', 'com.docker.compose.service=bitwarden',
              '--memory', '1536m', '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
@@ -209,6 +228,8 @@ def restore(deployment, image, folder):
                 previous.rename(BASE)
             if moved_container:
                 run(['docker', 'rename', old_name, 'bitwarden'], 30)
+            if policy_changed:
+                run(['docker', 'update', '--restart', old_restart, 'bitwarden'], 30)
             if old and running:
                 run(['docker', 'start', 'bitwarden'], 60)
                 if paused:

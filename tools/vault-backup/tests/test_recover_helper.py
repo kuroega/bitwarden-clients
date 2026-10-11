@@ -78,7 +78,8 @@ class RecoveryTests(unittest.TestCase):
             return b'{"Names":"bitwarden"}' if self.old else b''
         if args[:2] == ['docker', 'inspect']:
             return json.dumps([{'Mounts': [{'Source': str(self.base / 'data'), 'Destination': '/etc/bitwarden'}],
-                                'State': {'Running': self.running, 'Paused': self.paused}}]).encode()
+                                'State': {'Running': self.running, 'Paused': self.paused},
+                                'HostConfig': {'RestartPolicy': {'Name': 'always'}}}]).encode()
         return b''
 
     def restore(self, healthy=True):
@@ -94,6 +95,11 @@ class RecoveryTests(unittest.TestCase):
         create = next(call for call in self.calls if call[:2] == ['docker', 'create'])
         self.assertIn('127.0.0.1:8080:8080', create)
         self.assertIn(IMAGE, create)
+        self.assertEqual(create[create.index('--restart') + 1], 'always')
+        compose = (self.base / 'compose.yaml').read_text()
+        self.assertIn('restart: always', compose)
+        self.assertIn(IMAGE, compose)
+        self.assertIn(['docker', 'update', '--restart', 'no', 'bitwarden'], self.calls)
         self.assertTrue(any(call[:2] == ['tailscale', 'serve'] for call in self.calls))
 
     def test_health_failure_rolls_back(self):
@@ -102,6 +108,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual((self.base / 'original').read_text(), 'previous deployment')
         self.assertTrue((self.folder / 'failed-deployment/data/vault.db').exists())
         self.assertEqual(json.loads((self.folder / 'status.json').read_text())['phase'], 'rolled-back')
+        self.assertIn(['docker', 'update', '--restart', 'always', 'bitwarden'], self.calls)
 
     def test_create_failure_rolls_back(self):
         self.fail = ['docker', 'create']
@@ -148,6 +155,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertTrue((previous / 'original').exists())
         self.assertTrue((self.base / 'data/vault.db').exists())
         self.assertEqual(json.loads((self.folder / 'status.json').read_text())['phase'], 'complete-old-container-retained')
+        self.assertNotIn(['docker', 'update', '--restart', 'always', 'bitwarden'], self.calls)
 
     def archive(self):
         path = self.root / 'snapshot.tar'
